@@ -1,0 +1,11 @@
+{
+  "name": "mre",
+  "version": "1.0.0",
+  "description": "A JavaScript framework imitating React",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "zeigo",
+  "license": "ISC"
+}
