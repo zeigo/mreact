@@ -1231,13 +1231,17 @@ function completeUnitOfWork(workInProgress) {
 
     if (returnFiber !== null) {
       // return fiber接上workinprogress的effect list
-      if (returnFiber.lastEffect === null) {
-        // empty
-        returnFiber.firstEffect = workInProgress.firstEffect;
+      if (workInProgress.lastEffect === null) {
+        // empty, Noop
       } else {
-        returnFiber.lastEffect.nextEffect = workInProgress.firstEffect;
+        if (returnFiber.lastEffect !== null) {
+          returnFiber.lastEffect.nextEffect = workInProgress.firstEffect;
+        } else {
+          returnFiber.firstEffect = workInProgress.firstEffect;
+        }
+        returnFiber.lastEffect = workInProgress.lastEffect;
       }
-      returnFiber.lastEffect = workInProgress.lastEffect;
+      // 是否workInProgress firstEffect, lastEffect设null
 
       // 如果workInProgress有side-effect，插入到returnFiber effect list最后
       if (workInProgress.effectTag > _TypeOfEffect.PerformedWork) {
