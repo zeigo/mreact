@@ -201,7 +201,7 @@ function createWorkInProgress(current, pendingProps, expirationTime) {
 
   workInProgress.memorizedState = current.memorizedState;
   workInProgress.memorizedProps = current.memorizedProps;
-  workInProgress.pendingProps = current.pendingProps;
+  workInProgress.pendingProps = pendingProps;
   return workInProgress;
 }
 
@@ -317,7 +317,7 @@ var Element = function Element(type, props, key) {
 
 function createElement(type, config, children) {
   var props = {},
-      key = void 0,
+      key = null,
       configName = void 0;
   if (config) {
     key = config.key || null;
@@ -921,6 +921,8 @@ var _TypeOfEffect = __webpack_require__(1);
 
 var _Symbols = __webpack_require__(4);
 
+var _TypeOfWork = __webpack_require__(0);
+
 function reconcileChildren(current, workInProgress, nextChildren) {
   var expirationTime = workInProgress.expirationTime,
       currentFirstChild = null;
@@ -955,11 +957,14 @@ function reconcileSingleElement(returnFiber, currentFirstChild, element, expirat
       key = element.key;
   while (child !== null) {
     if (key === child.key) {
-      if (child.type === element.type) {} else {
+      if (child.type === element.type) {
         deleteRemainingChildren(returnFiber, child.sibling);
-        var existing = useFiber(child, element.type === REACT_FRAGMENT_TYPE ? element.props.children : element.props, expirationTime);
+        var existing = useFiber(child, element.props, expirationTime);
         existing.return = returnFiber;
         return existing;
+      } else {
+        deleteRemainingChildren(returnFiber, child);
+        break;
       }
     } else {
       deleteChild(returnFiber, child);
@@ -1061,7 +1066,7 @@ function updateElement(returnFiber, current, element, expirationTime) {
 }
 
 function updateTextNode(returnFiber, oldFiber, newText, expirationTime) {
-  if (oldFiber === null || oldFiber.tag !== HostText) {
+  if (oldFiber === null || oldFiber.tag !== _TypeOfWork.HostText) {
     // Insert
     var created = (0, _Fiber.createFiberFromText)(newText, expirationTime);
     created['return'] = returnFiber;
@@ -1167,7 +1172,7 @@ function placeSingleChild(newFiber) {
 
 // clone fiber, alternate为原始fiber
 function useFiber(fiber, pendingProps, expirationTime) {
-  var clone = createWorkInProgress(fiber, pendingProps, expirationTime);
+  var clone = (0, _Fiber.createWorkInProgress)(fiber, pendingProps, expirationTime);
   clone.index = 0;
   clone.sibling = null;
   return clone;
@@ -1342,14 +1347,14 @@ function diffProperties(domElement, type, oldProps, newProps) {
 
 function updateHostText(workInProgress, oldText, newText) {
   if (oldText !== newText) {
-    workInProgress.effectTag |= Update;
+    workInProgress.effectTag |= _TypeOfEffect.Update;
   }
 }
 
 function updateHostComponent(workInProgress, updatePayload) {
   workInProgress.updateQueue = updatePayload;
   if (updatePayload) {
-    workInProgress.effectTag |= Update;
+    workInProgress.effectTag |= _TypeOfEffect.Update;
   }
 }
 
