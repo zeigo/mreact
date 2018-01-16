@@ -3,7 +3,7 @@ import render from "./lib/DOM/render"
 
 let a = (
   <div>
-    <p>hello world</p>
+    <p style={{color: "red"}}>hello world</p>
     asdf
     <h1>second</h1>
   </div>
@@ -11,9 +11,8 @@ let a = (
 
 let b = (
   <div>
-    <h1>cs</h1>
-    ad
-    <p>hi</p>
+    <p style={{color: "blue", border: "1px solid"}}>hi</p>
+    zxcv
   </div>
 )
 var ctn = document.getElementById("app")
