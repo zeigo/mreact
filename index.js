@@ -1,5 +1,6 @@
 import createElement from "./lib/Element"
 import render from "./lib/DOM/render"
+import App from "./App"
 
 let a = (
   <div>
@@ -16,7 +17,11 @@ let b = (
   </div>
 )
 var ctn = document.getElementById("app")
-render(a, ctn)
+render(
+  <div>
+    <p>hello world</p>
+    <App />
+  </div> , ctn)
 
 var btn = document.createElement("button")
 btn.innerHTML = "click to change"

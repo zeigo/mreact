@@ -60,7 +60,7 @@
 /******/ 	__webpack_require__.p = "";
 /******/
 /******/ 	// Load entry module and return exports
-/******/ 	return __webpack_require__(__webpack_require__.s = 6);
+/******/ 	return __webpack_require__(__webpack_require__.s = 7);
 /******/ })
 /************************************************************************/
 /******/ ([
@@ -162,6 +162,9 @@ function createFiberFromElement(element, expirationTime) {
   if (typeof type === "string") {
     // HostComponent
     fiber = createFiber(_TypeOfWork.HostComponent, element.key);
+  } else if (typeof type === "function") {
+    // ClassComponent
+    fiber = createFiber(_TypeOfWork.ClassComponent, element.key);
   }
   fiber.type = type;
   fiber.expirationTime = expirationTime;
@@ -230,10 +233,66 @@ var Sync = exports.Sync = 1;
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
-var ELEMENT_TYPE = exports.ELEMENT_TYPE = Symbol.for("element");
+exports.default = createElement;
+
+var _Symbols = __webpack_require__(5);
+
+function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
+
+var Element = function Element(type, props, key) {
+  _classCallCheck(this, Element);
+
+  this.$$typeof = _Symbols.ELEMENT_TYPE;
+  this.type = type;
+  this.props = props;
+  this.key = key;
+};
+
+function createElement(type, config, children) {
+  var props = {},
+      key = null,
+      configName = void 0;
+  if (config) {
+    key = config.key || null;
+    for (configName in config) {
+      if (config.hasOwnProperty(configName) && configName !== "key") {
+        props[configName] = config[configName];
+      }
+    }
+  }
+  if (type && type.defaultProps) {
+    var defaultProps = type.defaultProps;
+    for (configName in defaultProps) {
+      if (props[configName] === undefined) {
+        props[configName] = defaultProps[configName];
+      }
+    }
+  }
+  var childrenLen = arguments.length - 2;
+  if (childrenLen === 1) props.children = children;else if (childrenLen > 1) {
+    var childArr = [];
+    for (var i = 0; i < childrenLen; i++) {
+      childArr.push(arguments[i + 2]);
+    }
+    props.children = childArr;
+  }
+  return new Element(type, props, key);
+}
 
 /***/ }),
 /* 5 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+var ELEMENT_TYPE = exports.ELEMENT_TYPE = Symbol.for("element");
+
+/***/ }),
+/* 6 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -365,19 +424,23 @@ function deleteValueForProperty(domElement, key) {
 }
 
 /***/ }),
-/* 6 */
+/* 7 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
 
 
-var _Element = __webpack_require__(7);
+var _Element = __webpack_require__(4);
 
 var _Element2 = _interopRequireDefault(_Element);
 
 var _render = __webpack_require__(8);
 
 var _render2 = _interopRequireDefault(_render);
+
+var _App = __webpack_require__(14);
+
+var _App2 = _interopRequireDefault(_App);
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
@@ -408,7 +471,16 @@ var b = (0, _Element2.default)(
   "zxcv"
 );
 var ctn = document.getElementById("app");
-(0, _render2.default)(a, ctn);
+(0, _render2.default)((0, _Element2.default)(
+  "div",
+  null,
+  (0, _Element2.default)(
+    "p",
+    null,
+    "hello world"
+  ),
+  (0, _Element2.default)(_App2.default, null)
+), ctn);
 
 var btn = document.createElement("button");
 btn.innerHTML = "click to change";
@@ -416,62 +488,6 @@ btn.onclick = function () {
   (0, _render2.default)(b, ctn);
 };
 document.body.appendChild(btn);
-
-/***/ }),
-/* 7 */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.default = createElement;
-
-var _Symbols = __webpack_require__(4);
-
-function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
-
-var Element = function Element(type, props, key) {
-  _classCallCheck(this, Element);
-
-  this.$$typeof = _Symbols.ELEMENT_TYPE;
-  this.type = type;
-  this.props = props;
-  this.key = key;
-};
-
-function createElement(type, config, children) {
-  var props = {},
-      key = null,
-      configName = void 0;
-  if (config) {
-    key = config.key || null;
-    for (configName in config) {
-      if (config.hasOwnProperty(configName) && configName !== "key") {
-        props[configName] = config[configName];
-      }
-    }
-  }
-  if (type && type.defaultProps) {
-    var defaultProps = type.defaultProps;
-    for (configName in defaultProps) {
-      if (props[configName] === undefined) {
-        props[configName] = defaultProps[configName];
-      }
-    }
-  }
-  var childrenLen = arguments.length - 2;
-  if (childrenLen === 1) props.children = children;else if (childrenLen > 1) {
-    var childArr = [];
-    for (var i = 0; i < childrenLen; i++) {
-      childArr.push(arguments[i + 2]);
-    }
-    props.children = childArr;
-  }
-  return new Element(type, props, key);
-}
 
 /***/ }),
 /* 8 */
@@ -924,6 +940,8 @@ function beginWork(current, workInProgress, renderExpirationTime) {
       return updateHostComponent(current, workInProgress, renderExpirationTime);
     case _TypeOfWork.HostText:
       return updateHostText(current, workInProgress);
+    case _TypeOfWork.ClassComponent:
+      return updateClassComponent(current, workInProgress, renderExpirationTime);
     default:
       throw Error("not valid tag of fiber");
   }
@@ -995,6 +1013,7 @@ function updateHostRoot(current, workInProgress, renderExpirationTime) {
 
 function cloneChildFibers(current, workInProgress) {
   var currentChild = workInProgress.child;
+  if (currentChild === null) return;
   var newChild = (0, _Fiber.createWorkInProgress)(currentChild, currentChild.pendingProps, currentChild.expirationTime);
   newChild.return = workInProgress;
   workInProgress.child = newChild;
@@ -1009,11 +1028,43 @@ function cloneChildFibers(current, workInProgress) {
 
 function updateClassComponent(current, workInProgress, renderExpirationTime) {
   var shouldUpdate;
-  if (current === null) {} else {
+  if (current === null) {
+    // 组件实例化
+    constructClassInstance(workInProgress, workInProgress.pendingProps);
+    mountClassInstance(workInProgress, renderExpirationTime);
+    shouldUpdate = true;
+  } else {
     shouldUpdate = updateClassInstance(current, workInProgress, renderExpirationTime);
   }
 
   return finishClassComponent(current, workInProgress, shouldUpdate);
+}
+
+function constructClassInstance(workInProgress, props) {
+  var ctor = workInProgress.type,
+      instance = new ctor(props);
+  workInProgress.stateNode = instance;
+  instance._internalFiber = workInProgress;
+  // 插入updater
+  return instance;
+}
+
+function mountClassInstance(workInProgress, expirationTime) {
+  var current = workInProgress.alternate,
+      instance = workInProgress.stateNode,
+      state = instance.state || null;
+  instance.state = workInProgress.memoizedState = state; // 防止undefined
+  if (typeof instance.componentWillMount === "function") {
+    instance.componentWillMount();
+    // enqueueReplaceState
+    var queue = workInProgress.updateQueue;
+    if (queue !== null) {
+      instance.state = processUpdateQueue(current, workInProgress, updateQueue);
+    }
+  }
+  if (typeof instance.componentDidMount === "function") {
+    workInProgress.effectTag |= _TypeOfEffect.Update;
+  }
 }
 
 // life-cycles
@@ -1076,8 +1127,9 @@ function finishClassComponent(current, workInProgress, shouldUpdate) {
     cloneChildFibers(current, workInProgress);
     return workInProgress.child;
   }
-  var nextChildren = instance.render();
-  workInProgress.effectTag |= PerformedWork;
+  var instance = workInProgress.stateNode,
+      nextChildren = instance.render();
+  workInProgress.effectTag |= _TypeOfEffect.PerformedWork;
   (0, _FiberReconciler2.default)(current, workInProgress, nextChildren);
   workInProgress.memorizedProps = instance.props;
   workInProgress.memorizedState = instance.state;
@@ -1129,7 +1181,7 @@ var _Fiber = __webpack_require__(2);
 
 var _TypeOfEffect = __webpack_require__(1);
 
-var _Symbols = __webpack_require__(4);
+var _Symbols = __webpack_require__(5);
 
 var _TypeOfWork = __webpack_require__(0);
 
@@ -1428,7 +1480,7 @@ var _TypeOfEffect = __webpack_require__(1);
 
 var _ExpirationTime = __webpack_require__(3);
 
-var _Property = __webpack_require__(5);
+var _Property = __webpack_require__(6);
 
 // 当还有sibling时，不返回null，对sibling performUnitOfWork
 function completeUnitOfWork(workInProgress) {
@@ -1640,7 +1692,7 @@ var _TypeOfEffect = __webpack_require__(1);
 
 var _TypeOfWork = __webpack_require__(0);
 
-var _Property = __webpack_require__(5);
+var _Property = __webpack_require__(6);
 
 function getHostParentFiber(fiber) {
   var parent = fiber.return;
@@ -1734,26 +1786,75 @@ function commitTextUpdate(textInstance, newText) {
   textInstance.nodeValue = newText;
 }
 
+// 从host父节点上删除
 function commitDeletion(fiber) {
-  var parentFiber = getHostParentFiber(fiber),
-      parent = void 0,
-      tag = fiber.tag;
-  if (parentFiber.tag === _TypeOfWork.HostComponent) parent = parentFiber.stateNode;else if (parentFiber.tag === _TypeOfWork.HostRoot) parent = parentFiber.stateNode.containerInfo;
-  if (tag === _TypeOfWork.HostComponent || tag === _TypeOfWork.HostText) {
-    parent.removeChild(fiber.stateNode);
-  }if (tag === _TypeOfWork.ClassComponent) {}
-  // TODO: componentWillUnmount
-
+  unmountHostComponent(fiber);
   // detachFiber
   fiber.return = null;
   fiber.child = null;
+}
+
+function unmountHostComponent(fiber) {
+  var node = fiber,
+      parentFiber = getHostParentFiber(fiber),
+      parent,
+      tag;
+  if (parentFiber.tag === _TypeOfWork.HostComponent) parent = parentFiber.stateNode;else if (parentFiber.tag === _TypeOfWork.HostRoot) parent = parentFiber.stateNode.containerInfo;
+
+  while (true) {
+    tag = node.tag;
+    if (tag === _TypeOfWork.HostComponent || tag === _TypeOfWork.HostText) {
+      parent.removeChild(node.stateNode);
+      unmountChildren(node);
+    } else if (tag === _TypeOfWork.ClassComponent) {
+      var instance = node.stateNode;
+      if (typeof instance.componentWillUnmount === "function") {
+        instance.componentWillUnmount();
+      }
+      if (node.child !== null) {
+        node = node.child;
+        continue;
+      }
+    }
+    if (node === fiber) return; // fiber直接为Host或ClassComponent没有Child
+    while (node.sibling === null) {
+      if (node.return === null || node.return === fiber) return;
+      node = node.return;
+    }
+    node = node.sibling;
+  }
+}
+
+// 向下递归unmount ClassComponent
+// TODO: clear ref
+function unmountChildren(fiber) {
+  var node = fiber;
+  while (true) {
+    if (node.tag === _TypeOfWork.ClassComponent) {
+      var instance = node.stateNode;
+      if (typeof instance.componentWillUnmount === "function") {
+        instance.componentWillUnmount();
+      }
+    }
+    if (node.child !== null) {
+      node = node.child;
+      continue;
+    }
+    if (node === fiber) return; // fiber没有child，直接返回
+    while (node.sibling === null) {
+      // 若没有sibling，向上找
+      if (node.return === null || node.return === fiber) return;
+      node = node.return;
+    }
+    node = node.sibling;
+  }
 }
 
 function commitLifeCycles(current, fiber) {
   switch (fiber.tag) {
     case _TypeOfWork.HostComponent:
       {
-        if (current === null && fiber.effectTag & Update) {
+        if (current === null && fiber.effectTag & _TypeOfEffect.Update) {
           // auto focus for input/form control
         }
         return;
@@ -1764,11 +1865,119 @@ function commitLifeCycles(current, fiber) {
       }
     case _TypeOfWork.ClassComponent:
       {
-        // ...
+        if (current === null && fiber.effectTag & _TypeOfEffect.Update) {
+          var instance = fiber.stateNode;
+          instance.componentDidMount();
+        } else {
+          // cDU
+        }
         return;
       }
   }
 }
+
+/***/ }),
+/* 14 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
+
+var _Component = __webpack_require__(15);
+
+var _Component2 = _interopRequireDefault(_Component);
+
+var _Element = __webpack_require__(4);
+
+var _Element2 = _interopRequireDefault(_Element);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
+
+var App = function () {
+  function App(props) {
+    _classCallCheck(this, App);
+
+    this.state = { value: "a" };
+  }
+
+  _createClass(App, [{
+    key: "componentWillMount",
+    value: function componentWillMount() {
+      console.log("will mount");
+    }
+  }, {
+    key: "componentDidMount",
+    value: function componentDidMount() {
+      console.log("did mount");
+    }
+  }, {
+    key: "componentWillUnmount",
+    value: function componentWillUnmount() {
+      console.log("will unmount");
+    }
+  }, {
+    key: "render",
+    value: function render() {
+      return (0, _Element2.default)(
+        "div",
+        null,
+        (0, _Element2.default)(
+          "p",
+          null,
+          this.state.value
+        )
+      );
+    }
+  }]);
+
+  return App;
+}();
+
+exports.default = App;
+
+/***/ }),
+/* 15 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
+
+function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
+
+// TODO: context, callback
+var Component = function () {
+  function Component(props) {
+    _classCallCheck(this, Component);
+
+    this.props = props;
+    this.updater = null;
+  }
+
+  _createClass(Component, [{
+    key: "setState",
+    value: function setState(partialState) {
+      this.updater.enqueueSetState(this, partialState);
+    }
+  }]);
+
+  return Component;
+}();
+
+exports.default = Component;
 
 /***/ })
 /******/ ]);
