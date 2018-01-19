@@ -12,7 +12,7 @@ let a = (
 
 let b = (
   <div>
-    <p style={{color: "blue", border: "1px solid"}}>hi</p>
+    <p style={{color: "blue", border: "1px solid"}}></p>
     zxcv
   </div>
 )
@@ -20,6 +20,7 @@ var ctn = document.getElementById("app")
 render(
   <div>
     <p>hello world</p>
+    <button onClick={() => alert("hi")}>click</button>
     <App />
   </div> , ctn)
 

@@ -60,7 +60,7 @@
 /******/ 	__webpack_require__.p = "";
 /******/
 /******/ 	// Load entry module and return exports
-/******/ 	return __webpack_require__(__webpack_require__.s = 7);
+/******/ 	return __webpack_require__(__webpack_require__.s = 9);
 /******/ })
 /************************************************************************/
 /******/ ([
@@ -430,15 +430,79 @@ function deleteValueForProperty(domElement, key) {
 "use strict";
 
 
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.accumulateInto = accumulateInto;
+exports.forEachAccumulated = forEachAccumulated;
+// current: null/undefined, notArray, array;
+// next: notArray, array
+function accumulateInto(current, next) {
+  if (current == null) return next;
+
+  if (Array.isArray(current)) {
+    if (Array.isArray(next)) {
+      current.push.apply(current, next);
+      return current;
+    }
+    current.push(next);
+    return current;
+  }
+
+  if (Array.isArray(next)) {
+    next.unshift(current);
+    return next;
+  }
+  return [current, next];
+}
+
+function forEachAccumulated(arr, callback, context) {
+  if (Array.isArray(arr)) {
+    arr.forEach(callback, context);
+  } else if (arr) {
+    callback.call(context, arr);
+  }
+}
+
+/***/ }),
+/* 8 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.plugins = exports.registrationNameModule = undefined;
+
+var _SimpleEventPlugin = __webpack_require__(20);
+
+var _SimpleEventPlugin2 = _interopRequireDefault(_SimpleEventPlugin);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+var registrationNameModule = exports.registrationNameModule = {
+  onClick: {}
+};
+var plugins = exports.plugins = [_SimpleEventPlugin2.default];
+
+/***/ }),
+/* 9 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
 var _Element = __webpack_require__(4);
 
 var _Element2 = _interopRequireDefault(_Element);
 
-var _render = __webpack_require__(8);
+var _render = __webpack_require__(10);
 
 var _render2 = _interopRequireDefault(_render);
 
-var _App = __webpack_require__(14);
+var _App = __webpack_require__(25);
 
 var _App2 = _interopRequireDefault(_App);
 
@@ -463,11 +527,7 @@ var a = (0, _Element2.default)(
 var b = (0, _Element2.default)(
   "div",
   null,
-  (0, _Element2.default)(
-    "p",
-    { style: { color: "blue", border: "1px solid" } },
-    "hi"
-  ),
+  (0, _Element2.default)("p", { style: { color: "blue", border: "1px solid" } }),
   "zxcv"
 );
 var ctn = document.getElementById("app");
@@ -478,6 +538,13 @@ var ctn = document.getElementById("app");
     "p",
     null,
     "hello world"
+  ),
+  (0, _Element2.default)(
+    "button",
+    { onClick: function onClick() {
+        return alert("hi");
+      } },
+    "click"
   ),
   (0, _Element2.default)(_App2.default, null)
 ), ctn);
@@ -490,7 +557,7 @@ btn.onclick = function () {
 document.body.appendChild(btn);
 
 /***/ }),
-/* 8 */
+/* 10 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -507,7 +574,7 @@ var _TypeOfWork = __webpack_require__(0);
 
 var _ExpirationTime = __webpack_require__(3);
 
-var _FiberScheduler = __webpack_require__(9);
+var _FiberScheduler = __webpack_require__(11);
 
 // TODO: callback
 function render(element, container) {
@@ -588,7 +655,7 @@ function insertUpdateIntoQueue(update, queue) {
 }
 
 /***/ }),
-/* 9 */
+/* 11 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -606,13 +673,13 @@ var _TypeOfEffect = __webpack_require__(1);
 
 var _Fiber = __webpack_require__(2);
 
-var _FiberBeginWork = __webpack_require__(10);
+var _FiberBeginWork = __webpack_require__(12);
 
 var _FiberBeginWork2 = _interopRequireDefault(_FiberBeginWork);
 
-var _FiberCompleteWork = __webpack_require__(12);
+var _FiberCompleteWork = __webpack_require__(14);
 
-var _FiberCommitWork = __webpack_require__(13);
+var _FiberCommitWork = __webpack_require__(24);
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
@@ -901,7 +968,7 @@ function commitAllLifeCycles() {
 }
 
 /***/ }),
-/* 10 */
+/* 12 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -914,7 +981,7 @@ exports.default = beginWork;
 
 var _TypeOfWork = __webpack_require__(0);
 
-var _FiberReconciler = __webpack_require__(11);
+var _FiberReconciler = __webpack_require__(13);
 
 var _FiberReconciler2 = _interopRequireDefault(_FiberReconciler);
 
@@ -1163,7 +1230,7 @@ function updateHostText(current, workInProgress) {
 }
 
 /***/ }),
-/* 11 */
+/* 13 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -1185,6 +1252,7 @@ var _Symbols = __webpack_require__(5);
 
 var _TypeOfWork = __webpack_require__(0);
 
+// 标记pendingProps
 function reconcileChildren(current, workInProgress, nextChildren) {
   var expirationTime = workInProgress.expirationTime,
       currentFirstChild = null;
@@ -1463,7 +1531,7 @@ function deleteRemainingChildren(returnFiber, currentFirstChild) {
 }
 
 /***/ }),
-/* 12 */
+/* 14 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -1481,6 +1549,10 @@ var _TypeOfEffect = __webpack_require__(1);
 var _ExpirationTime = __webpack_require__(3);
 
 var _Property = __webpack_require__(6);
+
+var _EventEmitter = __webpack_require__(15);
+
+var _EventPluginRegistry = __webpack_require__(8);
 
 // 当还有sibling时，不返回null，对sibling performUnitOfWork
 function completeUnitOfWork(workInProgress) {
@@ -1651,30 +1723,615 @@ function setInitialDOMProperties(tag, domElement, props) {
   for (var propKey in props) {
     if (!props.hasOwnProperty(propKey)) continue;
     var prop = props[propKey];
-    switch (propKey) {
-      case "style":
-        {
-          var style = domElement.style;
-          for (var styleName in prop) {
-            if (!prop.hasOwnProperty(styleName)) continue;
-            if (styleName === "float") styleName = "cssFloat";
-            style[styleName] = prop[styleName];
-          }
-          break;
-        }
-      case "children":
-        {
-          // children只有text
-          if (typeof prop === "string" || typeof prop === "number") {
-            domElement.innerHTML = "" + prop; // textContent
-          }
-        }
+    if (propKey === "style") {
+      var style = domElement.style;
+      for (var styleName in prop) {
+        if (!prop.hasOwnProperty(styleName)) continue;
+        if (styleName === "float") styleName = "cssFloat";
+        style[styleName] = prop[styleName];
+      }
+    } else if (propKey === "children") {
+      // children只有text
+      if (typeof prop === "string" || typeof prop === "number") {
+        domElement.innerHTML = "" + prop; // textContent
+      }
+    } else if (_EventPluginRegistry.registrationNameModule.hasOwnProperty(propKey)) {
+      (0, _EventEmitter.listenTo)(propKey);
     }
   }
 }
 
 /***/ }),
-/* 13 */
+/* 15 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.listenTo = listenTo;
+
+var _EventListener = __webpack_require__(16);
+
+var alreadyListeningTo = {};
+var topListenerID = "_listenersID";
+var topListenerCounter = 0;
+
+var registrationNameDependencies = {
+  onClick: ["topClick"]
+};
+
+var topLevelTypes = {
+  topClick: "click"
+};
+
+function listenTo(registName) {
+  var isListening = getListeningForDocument(),
+      // {}
+  dependencies = registrationNameDependencies[registName];
+
+  for (var i = 0, len = dependencies.length; i < len; i++) {
+    var dependency = dependencies[i];
+    if (!(isListening.hasOwnProperty(dependency) && isListening[dependency])) {
+      (0, _EventListener.trapBubbledEvent)(dependency, topLevelTypes[dependency], document);
+      isListening[dependency] = true;
+    }
+  }
+
+  // isListening["topClick"] = true
+}
+
+function getListeningForDocument() {
+  if (!Object.prototype.hasOwnProperty.call(document, topListenerID)) {
+    // 还未注册过
+    document[topListenerID] = topListenerCounter++;
+    alreadyListeningTo[document[topListenerID]] = {};
+  }
+  return alreadyListeningTo[document[topListenerID]];
+}
+
+/***/ }),
+/* 16 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.trapBubbledEvent = trapBubbledEvent;
+
+var _CallbackBookKeeping = __webpack_require__(17);
+
+var _EventPluginHub = __webpack_require__(18);
+
+var EventListener = {
+  listen: function listen(target, eventType, callback) {
+    if (target.addEventListener) {
+      target.addEventListener(eventType, callback, false);
+      return {
+        remove: function remove() {
+          target.removeEventListener(eventType, callback, false);
+        }
+      };
+    } else if (target.attachEvent) {
+      target.attachEvent("on" + eventType, callback);
+      return {
+        remove: function remove() {
+          target.detachEvent("on" + eventType, callback);
+        }
+      };
+    }
+  },
+  capture: function capture(target, eventType, callback) {
+    if (target.addEventListener) {
+      target.addEventListener(eventType, callback, true);
+      return {
+        remove: function remove() {
+          target.removeEventListener(eventType, callback, true);
+        }
+      };
+    } else {
+      throw new Error("browser dont support capture phase");
+    }
+  }
+};
+
+// DOM的事件，生成event对象，经过捕获、冒泡回到document，处理default action
+// React提供更高的一层抽象，实现独立的捕获、冒泡
+
+// 在completeWork的过程中，当发现fiber有关于事件的属性，如onClick会注册click事件
+// 到document(focus/blur/cancel/close/scroll 为capture，其他为bubble阶段）
+// 当document发生click时，找到触发的target及fiber，合成bookkeeping；
+// 根据plugin extractEvents两次遍历找到回调，合成事件（Proxy），根据_dispatchListeners
+// _dispatchInstances，依次执行dispatch，之后回收到Event pool
+
+// 与之前理解的事件委托有所不同，document只起收集的作用，并不注册回调，回调都在对应的fiber里
+
+function trapBubbledEvent(topLevelType, baseName, element) {
+  if (!element) return;
+  EventListener.listen(element, baseName, dispatchEvent.bind(null, topLevelType));
+}
+
+// instance对应fiber，回调都保存在对应的props里
+function dispatchEvent(topLevelType, nativeEvent) {
+  var nativeEventTarget = getEventTarget(nativeEvent);
+  var targetInst = getClosestInstance(nativeEventTarget);
+  var bookkeeping = (0, _CallbackBookKeeping.getCallbackBookkeeping)(topLevelType, nativeEvent, targetInst);
+  // batched
+  handleTopLevel(bookkeeping);
+  (0, _CallbackBookKeeping.releaseCallbackBookkeeping)(bookkeeping);
+}
+
+function getEventTarget(nativeEvent) {
+  var target = nativeEvent.target || nativeEvent.srcElement || window;
+  return target.nodeType === 3 ? target.parentNode : target; // textNode
+}
+
+// HostComponent fiber
+function getClosestInstance(node) {
+  while (!node._internalInstance) {
+    node = node.parentNode;
+  }
+  return node._internalInstance;
+}
+
+function handleTopLevel(bookkeeping) {
+  var targetInst = bookkeeping.targetInst;
+  // ?? more ancestors
+  var ancestors = bookkeeping.ancestors;
+  ancestors.push(targetInst);
+  (0, _EventPluginHub.runExtractedEventsInBatch)(bookkeeping.topLevelType, targetInst, bookkeeping.nativeEvent, getEventTarget(bookkeeping.nativeEvent));
+}
+
+/***/ }),
+/* 17 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.getCallbackBookkeeping = getCallbackBookkeeping;
+exports.releaseCallbackBookkeeping = releaseCallbackBookkeeping;
+// bookkeep pool
+var callbackBookkeepingPool = [];
+var POOL_SIZE = 10;
+
+function getCallbackBookkeeping(topLevelType, nativeEvent, targetInst) {
+  if (callbackBookkeepingPool.length) {
+    var instance = callbackBookkeepingPool.pop();
+    instance.topLevelType = topLevelType;
+    instance.nativeEvent = nativeEvent;
+    instance.targetInst = targetInst;
+    return instance;
+  }
+  return {
+    topLevelType: topLevelType,
+    nativeEvent: nativeEvent,
+    targetInst: targetInst,
+    ancestors: []
+  };
+}
+
+function releaseCallbackBookkeeping(instance) {
+  instance.ancestors = [];
+  instance.topLevelType = null;
+  instance.nativeEvent = null;
+  instance.targetInst = null;
+
+  if (callbackBookkeepingPool.length < POOL_SIZE) {
+    callbackBookkeepingPool.push(instance);
+  }
+}
+
+/***/ }),
+/* 18 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.runExtractedEventsInBatch = runExtractedEventsInBatch;
+
+var _Accumulate = __webpack_require__(7);
+
+var _EventPluginUtils = __webpack_require__(19);
+
+var _EventPluginRegistry = __webpack_require__(8);
+
+var eventQueue = null;
+
+function runExtractedEventsInBatch(topLevelType, targetInst, nativeEvent, nativeEventTarget) {
+  var events = extractEvents(topLevelType, targetInst, nativeEvent, nativeEventTarget);
+  runEventsInBatch(events);
+}
+
+function extractEvents(topLevelType, targetInst, nativeEvent, nativeEventTarget) {
+  var events;
+  for (var i = 0; i < _EventPluginRegistry.plugins.length; i++) {
+    // Not every plugin in the ordering may be loaded at runtime.
+    var possiblePlugin = _EventPluginRegistry.plugins[i];
+    if (possiblePlugin) {
+      var extractedEvents = possiblePlugin.extractEvents(topLevelType, targetInst, nativeEvent, nativeEventTarget);
+      if (extractedEvents) {
+        events = (0, _Accumulate.accumulateInto)(events, extractedEvents);
+      }
+    }
+  }
+  return events;
+}
+
+function runEventsInBatch(events) {
+  if (events) eventQueue = (0, _Accumulate.accumulateInto)(eventQueue, events);
+  var processingEventQueue = eventQueue;
+  eventQueue = null;
+  if (processingEventQueue) {
+    (0, _Accumulate.forEachAccumulated)(processingEventQueue, _EventPluginUtils.executeDispatchesAndRelease);
+  }
+}
+
+/***/ }),
+/* 19 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.executeDispatchesAndRelease = executeDispatchesAndRelease;
+function executeDispatchesAndRelease(event) {
+  if (event) {
+    executeDispatchesInOrder(event);
+    if (!event.isPersistent) {
+      event.constructor.release(event);
+    }
+  }
+}
+
+function executeDispatchesInOrder(event) {
+  var dispatchListeners = event._dispatchListeners;
+  var dispatchInstances = event._dispatchInstances;
+
+  if (Array.isArray(dispatchListeners)) {
+    for (var i = 0, len = dispatchListeners.length; i < len; i++) {
+      if (event.propagationStopped) break;
+      executeDispatch(event, dispatchListeners[i], dispatchInstances[i]);
+    }
+  } else if (dispatchListeners) {
+    executeDispatch(event, dispatchListeners, dispatchInstances);
+  }
+
+  event._dispatchListeners = null;
+  event._dispatchInstances = null;
+}
+
+// 切换currentTarget，执行回调
+// 这里listener是直接调用，如果之前没有bind或arrow function，this为undefined
+// simulated: boolean ?? 作用还不明
+function executeDispatch(event, listener, instance) {
+  event.currentTarget = instance.stateNode;
+  // invokeGuardedCallback还需要传type，这里简化
+  listener.call(undefined, event);
+  event.currentTarget = null;
+}
+
+/***/ }),
+/* 20 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _TypeOfWork = __webpack_require__(0);
+
+var _SyntheticMouseEvent = __webpack_require__(21);
+
+var _SyntheticMouseEvent2 = _interopRequireDefault(_SyntheticMouseEvent);
+
+var _Accumulate = __webpack_require__(7);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+var topLevelTypeToDispatchConfig = {};
+var eventTypes = {};
+
+["click", "mouseenter"].forEach(function (event) {
+  var capitalized = event[0].toUpperCase() + event.slice(1);
+  var onEvent = "on" + capitalized;
+  var topEvent = "top" + capitalized;
+  var type = {
+    dependencies: [topEvent],
+    phasedRegistrationNames: {
+      captured: onEvent + "Captured",
+      bubbled: onEvent
+    }
+  };
+  eventTypes[event] = type;
+  topLevelTypeToDispatchConfig[topEvent] = type;
+});
+
+var SimpleEventPlugin = {
+  eventTypes: eventTypes,
+
+  extractEvents: function extractEvents(topLevelType, targetInst, nativeEvent, nativeEventTarget) {
+    var dispatchConfig = topLevelTypeToDispatchConfig[topLevelType];
+    if (!dispatchConfig) return null;
+    var EventConstructor;
+    switch (topLevelType) {
+      case "topClick":
+        EventConstructor = _SyntheticMouseEvent2.default;
+        break;
+      default:
+        break;
+    }
+    // pooled
+    var event = EventConstructor.getPooled(dispatchConfig, targetInst, nativeEvent, nativeEventTarget);
+    traverseTwoPhase(targetInst, event);
+    return event;
+  }
+};
+
+// 第一遍从上往下找onClickCapture，第二遍从下往上找onClick
+function traverseTwoPhase(inst, event) {
+  var path = []; // button, div
+  while (inst) {
+    if (inst.tag === _TypeOfWork.HostComponent) path.push(inst);
+    inst = inst.return;
+  }
+  var i,
+      len = path.length;
+  for (i = len - 1; i >= 0; i--) {
+    accumulateDispatches(path[i], event, "captured");
+  }
+  for (i = 0; i < len; i++) {
+    accumulateDispatches(path[i], event, "bubbled");
+  }
+}
+
+// 找到phase对应的registrationName，找inst对应的prop
+function accumulateDispatches(inst, event, phase) {
+  var registrationName = event.dispatchConfig.phasedRegistrationNames[phase];
+  var listener = getListener(inst, registrationName);
+  if (listener) {
+    event._dispatchListeners = (0, _Accumulate.accumulateInto)(event._dispatchListeners, listener);
+    event._dispatchInstances = (0, _Accumulate.accumulateInto)(event._dispatchInstances, inst);
+  }
+}
+
+function getListener(inst, registrationName) {
+  var listener;
+  // 为什么不直接memorizedProps
+  var stateNode = inst.stateNode;
+  if (!stateNode) return null;
+  var props = stateNode._eventHandler;
+  if (!props) return null;
+  listener = props[registrationName];
+  // disabled button/input/textarea/select
+  return listener;
+}
+
+exports.default = SimpleEventPlugin;
+
+/***/ }),
+/* 21 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _SyntheticUIEvent = __webpack_require__(22);
+
+var _SyntheticUIEvent2 = _interopRequireDefault(_SyntheticUIEvent);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+var SyntheticMouseEvent = _SyntheticUIEvent2.default.extend({
+  screenX: null,
+  screenY: null,
+  clientX: null,
+  clientY: null,
+  pageX: null,
+  pageY: null,
+  ctrlKey: null,
+  shiftKey: null,
+  altKey: null,
+  metaKey: null,
+  button: null,
+  buttons: null,
+  relatedTarget: function relatedTarget(event) {
+    return event.relatedTarget || (event.fromElement === event.srcElement ? event.toElement : event.fromElement);
+  }
+});
+
+exports.default = SyntheticMouseEvent;
+
+/***/ }),
+/* 22 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _SyntheticEvent = __webpack_require__(23);
+
+var _SyntheticEvent2 = _interopRequireDefault(_SyntheticEvent);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+var SyntheticUIEvent = _SyntheticEvent2.default.extend({
+  view: null,
+  detail: null
+});
+
+exports.default = _SyntheticEvent2.default;
+
+/***/ }),
+/* 23 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+var POOL_SIZE = 10;
+
+var EventInterface = {
+  type: null,
+  target: null, // IE srcElement
+  // currentTarget在dispatch的时候设置
+  currentTarget: null,
+  eventPhase: null,
+  bubbles: null,
+  cancelable: null,
+  defaultPrevented: null, // IE returnValue
+  isTrusted: null
+};
+
+var shouldBeReleasedProperties = ['dispatchConfig', '_targetInst', 'nativeEvent', 'isDefaultPrevented', 'isPropagationStopped', '_dispatchListeners', '_dispatchInstances'];
+
+function SyntheticEvent(dispatchConfig, targetInst, nativeEvent, nativeEventTarget) {
+  this.dispatchConfig = dispatchConfig;
+  this._targetInst = targetInst; // fiber
+  this.nativeEvent = nativeEvent;
+
+  var Interface = this.constructor.Interface,
+      propName;
+  for (propName in Interface) {
+    if (!Interface.hasOwnProperty(propName)) continue;
+    var propValue = Interface[propName];
+    if (propValue) {
+      // function
+      this[propName] = propValue(nativeEvent);
+    } else if (propName === "target") {
+      this.target = nativeEventTarget;
+    } else if (propName === "currentTarget") {
+      this.currentTarget = null;
+    } else {
+      this[propName] = nativeEvent[propName];
+    }
+  }
+
+  var defaultPrevented = nativeEvent.defaultPrevented != null ? nativeEvent.defaultPrevented : this.returnValue === false;
+  this.isDefaultPrevented = defaultPrevented;
+
+  this.isPropagationStopped = false;
+
+  // this._dispatchInstances
+  // this._dispatchListeners
+}
+
+SyntheticEvent.Interface = EventInterface;
+
+Object.assign(SyntheticEvent.prototype, {
+  stopPropagation: function stopPropagation() {
+    var event = this.nativeEvent;
+    if (!event) return;
+    if (event.stopPropagation) {
+      event.stopPropagation();
+    } else if (typeof event.cancelBubble !== "unknown") {
+      event.cancelBubble = true;
+    }
+    this.isPropagationStopped = true;
+  },
+  preventDefault: function preventDefault() {
+    this.defaultPrevented = true;
+    var event = this.nativeEvent;
+    if (!event) return;
+    if (event.preventDefault) {
+      event.preventDefault();
+    } else if (typeof event.returnValue !== 'unknown') {
+      event.returnValue = false;
+    }
+    this.isDefaultPrevented = true;
+  },
+  persist: function persist() {
+    this.isPersistent = true;
+  },
+  destructor: function destructor() {
+    var Interface = this.constructor.Interface;
+    for (var propName in Interface) {
+      this[propName] = null;
+    }
+    for (var i = 0, len = shouldBeReleasedProperties.length; i < len; i++) {
+      this[shouldBeReleasedProperties[i]] = null;
+    }
+  }
+});
+
+SyntheticEvent.extend = function (Interface) {
+  var Super = this;
+  // 寄生组合式继承
+  var E = function E() {};
+  E.prototype = Super.prototype;
+  var prototype = new E();
+  // 类似prototype = Object.create(Super.prototype)
+  // 不直接Class.prototype = new Super()
+  // 避免进行Super的实例化
+  function Class() {
+    return Super.apply(this, arguments);
+  }
+  Object.assign(prototype, Class.prototype);
+  Class.prototype = prototype;
+  Class.prototype.constructor = Class;
+  Class.Interface = Object.assign({}, Super.Interface, Interface);
+  Class.extend = Super.extend;
+  addEventPoolingTo(Class);
+  return Class;
+};
+
+function addEventPoolingTo(EventConstructor) {
+  EventConstructor.eventPool = [];
+
+  EventConstructor.getPooled = function (dispatchConfig, targetInst, nativeEvent, nativeEventTarget) {
+    var EventConstructor = this;
+    if (EventConstructor.eventPool.length) {
+      var instance = EventConstructor.eventPool.pop();
+      EventConstructor.call(instance, dispatchConfig, targetInst, nativeEvent, nativeEventTarget);
+      return instance;
+    }
+    return new EventConstructor(dispatchConfig, targetInst, nativeEvent, nativeEventTarget);
+  };
+
+  EventConstructor.release = function (event) {
+    var EventConstructor = this;
+    event.destructor();
+    if (this.eventPool.length < POOL_SIZE) {
+      this.eventPool.push(event);
+    }
+  };
+}
+
+addEventPoolingTo(SyntheticEvent);
+
+exports.default = SyntheticEvent;
+
+/***/ }),
+/* 24 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -1877,7 +2534,7 @@ function commitLifeCycles(current, fiber) {
 }
 
 /***/ }),
-/* 14 */
+/* 25 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -1889,7 +2546,7 @@ Object.defineProperty(exports, "__esModule", {
 
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
-var _Component = __webpack_require__(15);
+var _Component = __webpack_require__(26);
 
 var _Component2 = _interopRequireDefault(_Component);
 
@@ -1944,7 +2601,7 @@ var App = function () {
 exports.default = App;
 
 /***/ }),
-/* 15 */
+/* 26 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
