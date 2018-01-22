@@ -12,17 +12,20 @@ let a = (
 
 let b = (
   <div>
-    <p style={{color: "blue", border: "1px solid"}}></p>
+    <p style={{color: "blue", border: "1px solid"}}>
+      <input />
+    </p>
     zxcv
   </div>
 )
 var ctn = document.getElementById("app")
-render(
-  <div>
-    <p>hello world</p>
-    <button onClick={() => alert("hi")}>click</button>
-    <App />
-  </div> , ctn)
+// render(
+//   <div>
+//     <p>hello world</p>
+//     <button onClick={() => alert("hi")}>click</button>
+//     <App />
+//   </div> , ctn)
+render(a, ctn)
 
 var btn = document.createElement("button")
 btn.innerHTML = "click to change"

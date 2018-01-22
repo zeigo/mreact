@@ -60,7 +60,7 @@
 /******/ 	__webpack_require__.p = "";
 /******/
 /******/ 	// Load entry module and return exports
-/******/ 	return __webpack_require__(__webpack_require__.s = 9);
+/******/ 	return __webpack_require__(__webpack_require__.s = 10);
 /******/ })
 /************************************************************************/
 /******/ ([
@@ -106,6 +106,47 @@ var Ref = exports.Ref = 128; //              0b10000000
 
 /***/ }),
 /* 2 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.msToExpirationTime = msToExpirationTime;
+exports.expirationTimeToMs = expirationTimeToMs;
+exports.computeExpirationBucket = computeExpirationBucket;
+var NoWork = exports.NoWork = 0;
+var Sync = exports.Sync = 1;
+
+// expirationTime is too too long, maybe change its name later
+var UNIT_SIZE = 10;
+var MAGIC_NUMBER_OFFSET = 2;
+
+// 1 unit of expiration time represents 10ms.
+function msToExpirationTime(ms) {
+  // 加上偏移量以避免10ms以内的与NoWork冲突
+  return (ms / UNIT_SIZE | 0) + MAGIC_NUMBER_OFFSET;
+}
+
+function expirationTimeToMs(expirationTime) {
+  return (expirationTime - MAGIC_NUMBER_OFFSET) * UNIT_SIZE;
+}
+
+// 向上取整为precision的倍数
+function ceiling(num, precision) {
+  return ((num / precision | 0) + 1) * precision;
+}
+
+// expirationInMs: 1000, bucketSizeMs: 200
+// 200ms内都会有相同的expirationTime
+function computeExpirationBucket(currentTime, expirationInMs, bucketSizeMs) {
+  return ceiling(currentTime + expirationInMs / UNIT_SIZE, bucketSizeMs / UNIT_SIZE);
+}
+
+/***/ }),
+/* 3 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -209,7 +250,7 @@ function createWorkInProgress(current, pendingProps, expirationTime) {
 }
 
 /***/ }),
-/* 3 */
+/* 4 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -218,13 +259,226 @@ function createWorkInProgress(current, pendingProps, expirationTime) {
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
-var NoWork = exports.NoWork = 0;
-var Sync = exports.Sync = 1;
+exports.insertUpdateIntoFiber = insertUpdateIntoFiber;
+exports.processUpdateQueue = processUpdateQueue;
 
-// expirationTime is too too long, maybe change its name later
+var _ExpirationTime = __webpack_require__(2);
+
+function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
+
+var Update = function Update() {
+  _classCallCheck(this, Update);
+
+  this.expirationTime = _ExpirationTime.NoWork;
+  this.next = null; // Update
+  this.partialState = null;
+};
+
+// Singly linked-list of updates. When an update is scheduled, it is added to
+// the queue of the current fiber and the work-in-progress fiber. The two queues
+// are separate but they share a persistent structure.
+//
+// During reconciliation, updates are removed from the work-in-progress fiber,
+// but they remain on the current fiber. That ensures that if a work-in-progress
+// is aborted, the aborted updates are recovered by cloning from current.
+//
+// The work-in-progress queue is always a subset of the current queue.
+//
+// When the tree is committed, the work-in-progress becomes the current.
+
+
+var UpdateQueue =
+// A processed update is not removed from the queue if there are any
+// unprocessed updates that came before it. In that case, we need to keep
+// track of the base state, which represents the base state of the first
+// unprocessed update, which is the same as the first update in the list.
+function UpdateQueue() {
+  _classCallCheck(this, UpdateQueue);
+
+  this.first = null;
+  this.last = null;
+  this.expirationTime = _ExpirationTime.NoWork;
+  this.isInitialized = false; // 标志baseState是否初始化
+  this.baseState = null;
+};
+
+function createUpdateQueue() {
+  return {
+    baseState: null,
+    first: null,
+    last: null,
+    expirationTime: _ExpirationTime.NoWork,
+    isInitialized: false
+  };
+}
+
+function insertUpdateIntoFiber(fiber, update) {
+  // 最多有两条不同的queue
+  var alternate = fiber.alternate,
+      queue1 = fiber.updateQueue;
+  if (queue1 === null) {
+    queue1 = fiber.updateQueue = createUpdateQueue();
+  }
+  var queue2 = void 0;
+  if (alternate !== null) {
+    queue2 = alternate.updateQueue;
+    if (queue2 === null) {
+      queue2 = alternate.updateQueue = createUpdateQueue();
+    }
+  } else {
+    queue2 = null;
+  }
+  queue1 === queue2 && (queue2 = null);
+
+  if (queue2 === null) {
+    insertUpdateIntoQueue(queue1, update);
+    return;
+  }
+
+  if (queue1.last === null || queue2.last === null) {
+    insertUpdateIntoQueue(queue1, update);
+    insertUpdateIntoQueue(queue2, update);
+    return;
+  }
+
+  insertUpdateIntoQueue(queue1, update);
+  // 当有两条不同queue时，当不为空时，只需更新queue1，并更新queue2.last
+  queue2.last = update;
+}
+
+function insertUpdateIntoQueue(queue, update) {
+  if (queue.last === null) {
+    queue.first = queue.last = update;
+  } else {
+    // update放到queue最后
+    queue.last.next = update;
+    queue.last = update;
+  }
+  if (queue.expirationTime == _ExpirationTime.NoWork || queue.expirationTime > update.expirationTime) {
+    queue.expirationTime = update.expirationTime;
+  } // queue的expirationTime与最小的update保持一致
+}
+
+// need prevProps, prevState later for partialState which is function
+function processUpdateQueue(current, workInProgress, queue, renderExpirationTime) {
+  // workInProgress的queue是由current直接赋值来的，persistent
+  if (current !== null && current.queue === queue) {
+    var currentQueue = queue;
+    queue = workInProgress.updateQueue = {
+      first: currentQueue.first,
+      last: currentQueue.last,
+      isInitialized: currentQueue.isInitialized,
+      baseState: currentQueue.baseState
+    };
+  }
+  // queue的expirationTime需要是被跳过而剩余的update中最小值
+  // 这里先重置
+  queue.expirationTime = _ExpirationTime.NoWork;
+  // initialize state
+  var state = void 0;
+  if (queue.isInitialized) {
+    state = queue.baseState;
+  } else {
+    state = queue.baseState = workInProgress.memorizedState;
+    queue.isInitialized = true;
+  }
+  var update = queue.first,
+      dontMutatePrevState = true,
+
+  // 不直接在原来state上修改，从而保证state引用不同
+  didSkip = false;
+  while (update !== null) {
+
+    var updateExpirationTime = update.expirationTime;
+    if (updateExpirationTime > renderExpirationTime) {
+      // 不紧急，跳过
+      if (queue.expirationTime === _ExpirationTime.NoWork || queue.expirationTime > updateExpirationTime) {
+        queue.expirationTime = updateExpirationTime;
+      } // 保持queue的expirationTime最小
+      if (!didSkip) {
+        didSkip = true;
+        queue.baseState = state;
+      }
+      update = update.next;
+      continue;
+    }
+    // 若之前没有跳过，从queue里删去这个update
+    // ?? 能否使updateQueue只剩下跳过的部分
+    if (!didSkip) {
+      queue.first = update.next;
+      queue.first === null && (queue.last = null);
+    }
+
+    var partialState = getStateFromUpdate(update);
+    if (partialState) {
+      if (dontMutatePrevState) {
+        // 确保是新的state
+        state = Object.assign({}, state, partialState);
+      } else {
+        state = Object.assign(state, partialState);
+      }
+      dontMutatePrevState = false;
+    }
+    // TODO: add callback list
+    update = update.next;
+  }
+  if (queue.first === null) {
+    // queue已处理空
+    workInProgress.updateQueue = null;
+  }
+  if (!didSkip) {
+    queue.baseState = state;
+  }
+  return state;
+}
+
+function getStateFromUpdate(update) {
+  var partialState = update.partialState;
+  if (typeof partialState === 'function') {
+    // TODO: function
+  } else {
+    return partialState;
+  }
+}
 
 /***/ }),
-/* 4 */
+/* 5 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.plugins = exports.registrationNameDependencies = exports.registrationNameModules = exports.topLevelTypes = undefined;
+
+var _SimpleEventPlugin = __webpack_require__(22);
+
+var _SimpleEventPlugin2 = _interopRequireDefault(_SimpleEventPlugin);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+var topLevelTypes = exports.topLevelTypes = {
+  "topClick": "click",
+  "topChange": "change",
+  "topInput": "input",
+  "topAnimationEnd": "animationend" // get prefix
+};
+
+var registrationNameModules = exports.registrationNameModules = {
+  onClick: _SimpleEventPlugin2.default
+};
+
+var registrationNameDependencies = exports.registrationNameDependencies = {
+  "onClick": ["topClick"],
+  "onChange": ["topFocus", "topBlur", "topClick", "topKeyDown", "topKeyUp", "topChange", "topInput", "topSelectionChange"]
+};
+
+var plugins = exports.plugins = [_SimpleEventPlugin2.default];
+
+/***/ }),
+/* 6 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -235,7 +489,7 @@ Object.defineProperty(exports, "__esModule", {
 });
 exports.default = createElement;
 
-var _Symbols = __webpack_require__(5);
+var _Symbols = __webpack_require__(7);
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
@@ -280,7 +534,7 @@ function createElement(type, config, children) {
 }
 
 /***/ }),
-/* 5 */
+/* 7 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -292,7 +546,7 @@ Object.defineProperty(exports, "__esModule", {
 var ELEMENT_TYPE = exports.ELEMENT_TYPE = Symbol.for("element");
 
 /***/ }),
-/* 6 */
+/* 8 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -424,7 +678,7 @@ function deleteValueForProperty(domElement, key) {
 }
 
 /***/ }),
-/* 7 */
+/* 9 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -465,44 +719,21 @@ function forEachAccumulated(arr, callback, context) {
 }
 
 /***/ }),
-/* 8 */
+/* 10 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
 
 
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.plugins = exports.registrationNameModule = undefined;
-
-var _SimpleEventPlugin = __webpack_require__(20);
-
-var _SimpleEventPlugin2 = _interopRequireDefault(_SimpleEventPlugin);
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
-var registrationNameModule = exports.registrationNameModule = {
-  onClick: {}
-};
-var plugins = exports.plugins = [_SimpleEventPlugin2.default];
-
-/***/ }),
-/* 9 */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
-
-var _Element = __webpack_require__(4);
+var _Element = __webpack_require__(6);
 
 var _Element2 = _interopRequireDefault(_Element);
 
-var _render = __webpack_require__(10);
+var _render = __webpack_require__(11);
 
 var _render2 = _interopRequireDefault(_render);
 
-var _App = __webpack_require__(25);
+var _App = __webpack_require__(27);
 
 var _App2 = _interopRequireDefault(_App);
 
@@ -527,27 +758,21 @@ var a = (0, _Element2.default)(
 var b = (0, _Element2.default)(
   "div",
   null,
-  (0, _Element2.default)("p", { style: { color: "blue", border: "1px solid" } }),
+  (0, _Element2.default)(
+    "p",
+    { style: { color: "blue", border: "1px solid" } },
+    (0, _Element2.default)("input", null)
+  ),
   "zxcv"
 );
 var ctn = document.getElementById("app");
-(0, _render2.default)((0, _Element2.default)(
-  "div",
-  null,
-  (0, _Element2.default)(
-    "p",
-    null,
-    "hello world"
-  ),
-  (0, _Element2.default)(
-    "button",
-    { onClick: function onClick() {
-        return alert("hi");
-      } },
-    "click"
-  ),
-  (0, _Element2.default)(_App2.default, null)
-), ctn);
+// render(
+//   <div>
+//     <p>hello world</p>
+//     <button onClick={() => alert("hi")}>click</button>
+//     <App />
+//   </div> , ctn)
+(0, _render2.default)(a, ctn);
 
 var btn = document.createElement("button");
 btn.innerHTML = "click to change";
@@ -557,7 +782,7 @@ btn.onclick = function () {
 document.body.appendChild(btn);
 
 /***/ }),
-/* 10 */
+/* 11 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -568,13 +793,15 @@ Object.defineProperty(exports, "__esModule", {
 });
 exports.default = render;
 
-var _Fiber = __webpack_require__(2);
+var _Fiber = __webpack_require__(3);
 
 var _TypeOfWork = __webpack_require__(0);
 
-var _ExpirationTime = __webpack_require__(3);
+var _ExpirationTime = __webpack_require__(2);
 
-var _FiberScheduler = __webpack_require__(11);
+var _FiberScheduler = __webpack_require__(12);
+
+var _UpdateQueue = __webpack_require__(4);
 
 // TODO: callback
 function render(element, container) {
@@ -618,44 +845,12 @@ function scheduleTopLevelUpdate(fiber, element) {
     partialState: { element: element },
     next: null
   };
-  insertUpdateIntoFiber(fiber, update);
+  (0, _UpdateQueue.insertUpdateIntoFiber)(fiber, update);
   (0, _FiberScheduler.scheduleWork)(fiber, expirationTime);
 }
 
-function insertUpdateIntoFiber(fiber, update) {
-  var alternate = fiber.alternate,
-      queue1 = fiber.updateQueue;
-  if (queue1 === null) {
-    queue1 = fiber.updateQueue = createUpdateQueue();
-  }
-  insertUpdateIntoQueue(update, queue1);
-}
-
-function createUpdateQueue() {
-  return {
-    baseState: null,
-    first: null,
-    last: null,
-    expirationTime: _ExpirationTime.NoWork,
-    isInitialized: false
-  };
-}
-
-function insertUpdateIntoQueue(update, queue) {
-  if (queue.last === null) {
-    queue.first = queue.last = update;
-  } else {
-    // update放到queue最后
-    queue.last.next = update;
-    queue.last = update;
-  }
-  if (queue.expirationTime == _ExpirationTime.NoWork || queue.expirationTime > update.expirationTime) {
-    queue.expirationTime = update.expirationTime;
-  } // queue的expirationTime与最小的update保持一致
-}
-
 /***/ }),
-/* 11 */
+/* 12 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -667,19 +862,19 @@ Object.defineProperty(exports, "__esModule", {
 exports.computeExpirationForFiber = computeExpirationForFiber;
 exports.scheduleWork = scheduleWork;
 
-var _ExpirationTime = __webpack_require__(3);
+var _ExpirationTime = __webpack_require__(2);
 
 var _TypeOfEffect = __webpack_require__(1);
 
-var _Fiber = __webpack_require__(2);
+var _Fiber = __webpack_require__(3);
 
-var _FiberBeginWork = __webpack_require__(12);
+var _FiberBeginWork = __webpack_require__(13);
 
 var _FiberBeginWork2 = _interopRequireDefault(_FiberBeginWork);
 
-var _FiberCompleteWork = __webpack_require__(14);
+var _FiberCompleteWork = __webpack_require__(16);
 
-var _FiberCommitWork = __webpack_require__(24);
+var _FiberCommitWork = __webpack_require__(26);
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
@@ -687,46 +882,67 @@ function now() {
   return Date.now(); // performance.now()
 }
 
-function recalculteCurrentTime() {
+var startTime = now(),
+    // 作为之后expirationTime的参照
+mostRecentCurrentTime = (0, _ExpirationTime.msToExpirationTime)(0);
+
+function recalculateCurrentTime() {
   var ms = now() - startTime;
+  mostRecentCurrentTime = (0, _ExpirationTime.msToExpirationTime)(ms);
+  return mostRecentCurrentTime;
 }
+
+function computeAsyncExpiration() {
+  var currentTime = recalculateCurrentTime();
+  var expirationMs = 1000;
+  var bucketSizeMs = 200;
+  return (0, _ExpirationTime.computeExpirationBucket)(currentTime, expirationMs, bucketSizeMs);
+}
+
 // 处理页面多个HostRoot的情况！！
 var lastScheduledRoot = null,
-    firstScheduledRoot = null;
+    firstScheduledRoot = null,
+    nextFlushedRoot = null,
+    nextFlushedExpirationTime = _ExpirationTime.NoWork;
 
 var isRendering = false,
     isWorking = false,
-    isCommiting = false,
+    isCommitting = false,
     isUnmounting = false;
 
-var nextFlushedRoot = null,
-    nextFlushedExpirationTime = _ExpirationTime.NoWork,
-    nextRoot = null,
+var nextRoot = null,
     nextRenderExpirationTime = _ExpirationTime.NoWork,
-    nextUnitOfWork = null;
+    // 当前render的期限
+nextUnitOfWork = null;
 
 var deadline = null,
     deadlineDidExpire = false,
-    startTime = now(),
-    mostRecentCurrentTime = void 0;
+    callbackExpirationTime = _ExpirationTime.NoWork,
+    callbackId = -1;
+// 永远只有一个异步任务
 
 var nextEffect = null;
 
 var useSyncScheduling = true; // 默认同步渲染
 
+// updateContainer/setState时使用
 function computeExpirationForFiber(fiber) {
   var expirationTime;
   if (isWorking) {
-    if (isCommiting) {
+    if (isCommitting) {
+      // commit阶段的update默认Sync
+      // lifecycle?
       expirationTime = _ExpirationTime.Sync;
     } else {
+      // render阶段的update与当前render work一致
+      // componentWillMount/ 时setState
       expirationTime = nextRenderExpirationTime;
     }
   } else {
-    if (useSyncScheduling) {
-      expirationTime = _ExpirationTime.Sync;
+    if (fiber.internalContextTag !== undefined) {
+      expirationTime = computeAsyncExpiration();
     } else {
-      // computeAsyncExpiration
+      expirationTime = _ExpirationTime.Sync;
     }
   }
   return expirationTime;
@@ -775,26 +991,64 @@ function requestWork(root, expirationTime) {
     }
   }
 
-  if (isRendering) return;
+  if (isRendering) return; // 避免嵌套
 
   if (expirationTime === _ExpirationTime.Sync) {
     performWork(_ExpirationTime.Sync, null);
   } else {
     // requestIdleCallback
-    // scheduleCallbackWithExpiration(expirationTime)
+    scheduleCallbackWithExpiration(expirationTime);
   }
 }
 
+function scheduleCallbackWithExpiration(expirationTime) {
+  if (callbackExpirationTime !== _ExpirationTime.NoWork) {
+    if (expirationTime > callbackExpirationTime) {
+      // 已计划的callback更紧急，不需要再设置
+      return;
+    } else {
+      cancelIdleCallback(callbackId);
+    }
+  }
+  // Compute a timeout for the given expiration time.
+  var currentMs = now() - startTime;
+  var expirationMs = (0, _ExpirationTime.expirationTimeToMs)(expirationTime);
+  var timeout = expirationMs - currentMs;
+
+  callbackExpirationTime = expirationTime;
+  callbackId = requestIdleCallback(performAsyncWork, {
+    timeout: timeout
+  });
+}
+
+function performAsyncWork(dl) {
+  performWork(_ExpirationTime.NoWork, dl);
+}
+
 function performWork(minExpirationTime, dl) {
+  // minExpirationTime            dl
+  //       Sync                  null
+  //      NoWork       {didTimeout, timeRemaining()}
   deadline = dl;
 
   findHighestPriorityRoot();
 
-  while (nextFlushedRoot !== null && nextFlushedExpirationTime !== _ExpirationTime.NoWork) {
+  // 若performWorkOnRoot里的renderRoot耗尽了时间，deadlineDidExpire为true
+  while (nextFlushedRoot !== null && nextFlushedExpirationTime !== _ExpirationTime.NoWork && !deadlineDidExpire) {
     performWorkOnRoot(nextFlushedRoot, nextFlushedExpirationTime);
     findHighestPriorityRoot();
   }
+
+  if (deadline !== null) {
+    callbackExpirationTime = _ExpirationTime.NoWork;
+    callbackId = -1;
+  }
+
+  if (nextFlushedExpirationTime !== _ExpirationTime.NoWork) {
+    scheduleCallbackWithExpiration(nextFlushedExpirationTime);
+  }
   deadline = null;
+  deadlineDidExpire = false;
 }
 
 // 找到root list里面优先级最高的赋值给nextFlushedRoot, nextFlushedExpirationTime
@@ -833,17 +1087,23 @@ function findHighestPriorityRoot() {
 function performWorkOnRoot(root, expirationTime) {
   isRendering = true;
 
-  if (true) {
-    // flush sync work, expirationTime < recalculateCurrentTime()
-    var finishedWork = root.finishedWork;
+  var finishedWork = root.finishedWork;
+  if (finishedWork !== null) {
+    // 已完成，可进行commit; render和commit之间可能中断
+    root.finishedWork = null;
+    root.remainingExpirationTime = commitRoot(finishedWork);
+  } else {
+    finishedWork = renderRoot(root, expirationTime);
     if (finishedWork !== null) {
-      // 已完成，进行commit; render和commit之间可能中断
-      root.finishedWork = null;
-      root.remainingExpirationTime = commitRoot(finishedWork);
-    } else {
-      finishedWork = renderRoot(root, expirationTime);
-      if (finishedWork !== null) {
+      if (expirationTime < recalculateCurrentTime()) {
+        // sync/expired work，直接commit
         root.remainingExpirationTime = commitRoot(finishedWork);
+      } else if (!shouldYield()) {
+        // async，还有时间剩余，直接commit
+        root.remainingExpirationTime = commitRoot(finishedWork);
+      } else {
+        // 没时间剩余，之后再commit
+        root.finishedWork = finishedWork;
       }
     }
   }
@@ -851,10 +1111,21 @@ function performWorkOnRoot(root, expirationTime) {
   isRendering = false;
 }
 
+// 1.performUnitOfWork后要判断时间，没时间之后从nextUnitOfWork继续
+// 2.renderRoot后要判断时间，没时间之后从root.finishedWork继续
+function shouldYield() {
+  if (deadline === null) return false;
+  if (deadline.timeRemaining() > 1) return false;
+  deadlineDidExpire = true;
+  return true;
+}
+
+// 当workLoop中performUnitOfWork因时间不够停止时，isReadyForCommit仍为false，返回null
 function renderRoot(root, expirationTime) {
   isWorking = true;
   root.isReadyForCommit = false;
 
+  // 重新开始而不是从中断的地方nextUnitOfWork继续
   if (root !== nextRoot || expirationTime !== nextRenderExpirationTime || nextUnitOfWork === null) {
     nextRoot = root;
     nextRenderExpirationTime = expirationTime;
@@ -862,21 +1133,31 @@ function renderRoot(root, expirationTime) {
   }
   // invokeGuardedCallback
   workLoop(expirationTime);
-
+  isWorking = false;
   return root.isReadyForCommit ? root.current.alternate : null;
 }
 
 function workLoop(expirationTime) {
   if (nextRenderExpirationTime === _ExpirationTime.NoWork || nextRenderExpirationTime > expirationTime) return;
   // count expire and comfirm shouldYield
-  while (nextUnitOfWork !== null) {
-    nextUnitOfWork = performUnitOfWork(nextUnitOfWork);
+  if (nextRenderExpirationTime < mostRecentCurrentTime) {
+    // flush sync/expired work
+    while (nextUnitOfWork !== null) {
+      nextUnitOfWork = performUnitOfWork(nextUnitOfWork);
+    }
+  } else {
+    // flush async work until deadline
+    while (nextUnitOfWork !== null && !shouldYield()) {
+      nextUnitOfWork = performUnitOfWork(nextUnitOfWork);
+    }
   }
 }
 
 // perform分为begin/complete两步
-// begin 通过对比修改fiber 树，确定Placement, Deletion
-// complete 新建/更新实例，确定Update
+// begin 通过对比修改fiber 树，确定Placement, Deletion, ContentRest
+// 新建/更新Class实例, 根据pendingProps和updateQueue来
+// 确定work in progress的memorizedProps/State
+// complete 新建/更新Host实例，确定Update
 function performUnitOfWork(workInProgress) {
   var current = workInProgress.alternate;
   var next = (0, _FiberBeginWork2.default)(current, workInProgress, nextRenderExpirationTime);
@@ -890,7 +1171,7 @@ function performUnitOfWork(workInProgress) {
 // 遍历两次
 function commitRoot(finishedWork) {
   isWorking = true;
-  isCommiting = true;
+  isCommitting = true;
   var root = finishedWork.stateNode;
   root.isReadyForCommit = false;
 
@@ -919,15 +1200,18 @@ function commitRoot(finishedWork) {
     commitAllLifeCycles();
   }
   isWorking = false;
-  isCommiting = false;
+  isCommitting = false;
   root.isReadyForCommit = false;
   return root.current.expirationTime;
 }
 
 function commitAllHostEffects() {
   while (nextEffect !== null) {
-    var effectTag = nextEffect.effectTag,
-        primaryEffectTag = effectTag & (_TypeOfEffect.Placement | _TypeOfEffect.Update | _TypeOfEffect.Deletion);
+    var effectTag = nextEffect.effectTag;
+    if (effectTag & _TypeOfEffect.ContentReset) {
+      (0, _FiberCommitWork.commitContentReset)(nextEffect);
+    }
+    var primaryEffectTag = effectTag & (_TypeOfEffect.Placement | _TypeOfEffect.Update | _TypeOfEffect.Deletion);
     switch (primaryEffectTag) {
       case _TypeOfEffect.Deletion:
         {
@@ -968,7 +1252,7 @@ function commitAllLifeCycles() {
 }
 
 /***/ }),
-/* 12 */
+/* 13 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -981,17 +1265,15 @@ exports.default = beginWork;
 
 var _TypeOfWork = __webpack_require__(0);
 
-var _FiberReconciler = __webpack_require__(13);
+var _FiberReconciler = __webpack_require__(14);
 
-var _FiberReconciler2 = _interopRequireDefault(_FiberReconciler);
-
-var _Fiber = __webpack_require__(2);
-
-var _ExpirationTime = __webpack_require__(3);
+var _ExpirationTime = __webpack_require__(2);
 
 var _TypeOfEffect = __webpack_require__(1);
 
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+var _FiberClassComponent = __webpack_require__(15);
+
+var _UpdateQueue = __webpack_require__(4);
 
 // 控制入口，根据fiber的tag确定处理方式，返回下次work的对象
 function beginWork(current, workInProgress, renderExpirationTime) {
@@ -1000,9 +1282,6 @@ function beginWork(current, workInProgress, renderExpirationTime) {
   switch (workInProgress.tag) {
     case _TypeOfWork.HostRoot:
       return updateHostRoot(current, workInProgress, renderExpirationTime);
-    // dont support classComponet firstly
-    // case ClassComponent:
-    //   return updateClassComponent(current, workInProgress, renderExpirationTime)
     case _TypeOfWork.HostComponent:
       return updateHostComponent(current, workInProgress, renderExpirationTime);
     case _TypeOfWork.HostText:
@@ -1014,190 +1293,44 @@ function beginWork(current, workInProgress, renderExpirationTime) {
   }
 }
 
-// need prevProps, prevState later for partialState which is function
-function processUpdateQueue(current, workInProgress, queue) {
-  // workInProgress的queue是由current直接赋值来的，这里复制一份 why?
-  if (current !== null && current.queue === queue) {
-    var currentQueue = queue;
-    queue = workInProgress.updateQueue = {
-      first: currentQueue.first,
-      last: currentQueue.last,
-      isInitialized: currentQueue.isInitialized,
-      baseState: currentQueue.baseState
-    };
-  }
-  // initialize state
-  var state = void 0;
-  if (queue.isInitialized) {
-    state = queue.baseState;
-  } else {
-    state = queue.baseState = workInProgress.memorizedState;
-    queue.isInitialized = true;
-  }
-  var update = queue.first,
-      dontMutatePrevState = true;
-  while (update !== null) {
-    // TODO: skip low priority
-    var partialState = getStateFromState(update);
-    if (partialState) {
-      if (dontMutatePrevState) {
-        // 确保是新的state
-        state = Object.assign({}, state, partialState);
-      } else {
-        state = Object.assign(state, partialState);
-      }
-      dontMutatePrevState = false;
-    }
-    update = update.next;
-  }
-  workInProgress.updateQueue = null;
-  // TODO: add callback list
-  return state;
-}
-
-function getStateFromState(update) {
-  var partialState = update.partialState;
-  if (typeof partialState === "function") {
-    // TODO
-  }
-  return partialState;
-}
-
 // 根据updateQueue确定后续步骤
 function updateHostRoot(current, workInProgress, renderExpirationTime) {
   var updateQueue = workInProgress.updateQueue,
       prevState = workInProgress.memorizedState;
   if (updateQueue !== null) {
-    var state = processUpdateQueue(current, workInProgress, updateQueue);
+    var state = (0, _UpdateQueue.processUpdateQueue)(current, workInProgress, updateQueue, renderExpirationTime);
     var element = state.element;
     // 对比后更改workInProgress.child
-    (0, _FiberReconciler2.default)(current, workInProgress, element);
+    (0, _FiberReconciler.reconcileChildren)(current, workInProgress, element);
   } else {
-    cloneChildFibers(current, workInProgress);
+    (0, _FiberReconciler.cloneChildFibers)(current, workInProgress);
   }
   return workInProgress.child;
-}
-
-function cloneChildFibers(current, workInProgress) {
-  var currentChild = workInProgress.child;
-  if (currentChild === null) return;
-  var newChild = (0, _Fiber.createWorkInProgress)(currentChild, currentChild.pendingProps, currentChild.expirationTime);
-  newChild.return = workInProgress;
-  workInProgress.child = newChild;
-
-  while (currentChild.sibling !== null) {
-    currentChild = currentChild.sibling;
-    newChild = newChild.sibling = (0, _Fiber.createWorkInProgress)(currentChild, currentChild.pendingProps, currentChild.expirationTime);
-    newChild.return = workInProgress;
-  }
-  newChild.sibling = null;
 }
 
 function updateClassComponent(current, workInProgress, renderExpirationTime) {
   var shouldUpdate;
   if (current === null) {
     // 组件实例化
-    constructClassInstance(workInProgress, workInProgress.pendingProps);
-    mountClassInstance(workInProgress, renderExpirationTime);
+    (0, _FiberClassComponent.constructClassInstance)(workInProgress, workInProgress.pendingProps);
+    (0, _FiberClassComponent.mountClassInstance)(workInProgress, renderExpirationTime);
     shouldUpdate = true;
   } else {
-    shouldUpdate = updateClassInstance(current, workInProgress, renderExpirationTime);
+    shouldUpdate = (0, _FiberClassComponent.updateClassInstance)(current, workInProgress, renderExpirationTime);
   }
 
   return finishClassComponent(current, workInProgress, shouldUpdate);
 }
 
-function constructClassInstance(workInProgress, props) {
-  var ctor = workInProgress.type,
-      instance = new ctor(props);
-  workInProgress.stateNode = instance;
-  instance._internalFiber = workInProgress;
-  // 插入updater
-  return instance;
-}
-
-function mountClassInstance(workInProgress, expirationTime) {
-  var current = workInProgress.alternate,
-      instance = workInProgress.stateNode,
-      state = instance.state || null;
-  instance.state = workInProgress.memoizedState = state; // 防止undefined
-  if (typeof instance.componentWillMount === "function") {
-    instance.componentWillMount();
-    // enqueueReplaceState
-    var queue = workInProgress.updateQueue;
-    if (queue !== null) {
-      instance.state = processUpdateQueue(current, workInProgress, updateQueue);
-    }
-  }
-  if (typeof instance.componentDidMount === "function") {
-    workInProgress.effectTag |= _TypeOfEffect.Update;
-  }
-}
-
-// life-cycles
-function updateClassInstance(current, workInProgress, renderExpirationTime) {
-  var instance = workInProgress.stateNode,
-      oldProps = workInProgress.memorizedProps,
-      newProps = workInProgress.pendingProps;
-  if (newProps === null) {
-    newProps = oldProps;
-  }
-
-  // componentWillReceiveProps
-  if (typeof instance.componentWillReceiveProps === "function" && newProps !== oldProps) {
-    instance.componentWillReceiveProps(newProps);
-  }
-
-  var oldState = workInProgress.memorizedState,
-      newState = oldState;
-  if (workInProgress.updateQueue !== null) {
-    newState = processUpdateQueue(current, workInProgress, workInProgress.updateQueue);
-  }
-  // shouldComponentUpdate
-  var shouldUpdate = checkShouldComponentUpdate(workInProgress, oldProps, newProps, oldState, newState);
-  if (shouldUpdate) {
-    // componentWillUpdate
-    if (typeof instance.componentWillUpdate === "function") {
-      instance.componentWillUpdate(newProps, newState);
-    }
-    if (typeof instance.componentDidUpdate === "function") {
-      workInProgress.effectTag |= _TypeOfEffect.Update;
-    }
-  } else {
-    if (typeof instance.componentDidUpdate === 'function') {
-      if (oldProps !== current.memoizedProps || oldState !== current.memoizedState) {
-        workInProgress.effectTag |= _TypeOfEffect.Update;
-      }
-    }
-    workInProgress.memoizedProps = newProps;
-    workInProgress.memoizedState = newState;
-  }
-
-  instance.props = newProps;
-  instance.state = newState;
-  return shouldUpdate;
-}
-
-function checkShouldComponentUpdate(workInProgress, oldProps, newProps, oldState, newState) {
-  var instance = workInProgress.stateNode;
-  var shouldUpdate = void 0;
-  if (typeof instance.shouldComponentUpdate === "function") {
-    shouldUpdate = instance.shouldComponentUpdate(newProps, newState);
-    return shouldUpdate;
-  }
-  // pureComponent, shallowEqual
-  return true;
-}
-
 function finishClassComponent(current, workInProgress, shouldUpdate) {
   if (!shouldUpdate) {
-    cloneChildFibers(current, workInProgress);
+    (0, _FiberReconciler.cloneChildFibers)(current, workInProgress);
     return workInProgress.child;
   }
   var instance = workInProgress.stateNode,
       nextChildren = instance.render();
   workInProgress.effectTag |= _TypeOfEffect.PerformedWork;
-  (0, _FiberReconciler2.default)(current, workInProgress, nextChildren);
+  (0, _FiberReconciler.reconcileChildren)(current, workInProgress, nextChildren);
   workInProgress.memorizedProps = instance.props;
   workInProgress.memorizedState = instance.state;
   return workInProgress.child;
@@ -1206,31 +1339,40 @@ function finishClassComponent(current, workInProgress, shouldUpdate) {
 // 根据pendingProps, memorizedProps
 function updateHostComponent(current, workInProgress, renderExpirationTime) {
   var oldProps = workInProgress.memorizedProps,
-      newProps = workInProgress.pendingProps;
+      newProps = workInProgress.pendingProps,
+      type = workInProgress.type;
   if (newProps === null) newProps = oldProps;
   if (newProps === null || newProps === oldProps) {
-    cloneChildFibers(current, workInProgress);
+    (0, _FiberReconciler.cloneChildFibers)(current, workInProgress);
     return workInProgress.child;
   }
-  var nextChildren = newProps.children;
-  if (typeof nextChildren === "string") {
+  var nextChildren = newProps.children,
+      currentProps = current === null ? null : current.memorizedProps;
+  // 子节点只有textNode，不往下再创建fiber比较
+  // 所以若current的children只有text，需要ContentReset
+  if (shouldSetTextContent(type, newProps)) {
     nextChildren = null;
-  } // 子节点只有textNode，不往下再比较
-  (0, _FiberReconciler2.default)(current, workInProgress, nextChildren);
+  } else if (currentProps && shouldSetTextContent(type, currentProps)) {
+    workInProgress.effectTag |= _TypeOfEffect.ContentReset;
+  }
+
+  (0, _FiberReconciler.reconcileChildren)(current, workInProgress, nextChildren);
   workInProgress.memorizedProps = newProps;
   return workInProgress.child;
 }
 
+function shouldSetTextContent(type, props) {
+  return typeof props.children === "string" || typeof props.children === "number";
+}
+
 function updateHostText(current, workInProgress) {
-  var oldProps = workInProgress.memorizedProps,
-      newProps = workInProgress.pendingProps;
-  if (newProps === null) newProps = oldProps;
+  var newProps = workInProgress.pendingProps;
   workInProgress.memorizedProps = newProps;
   return null;
 }
 
 /***/ }),
-/* 13 */
+/* 14 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -1242,17 +1384,18 @@ Object.defineProperty(exports, "__esModule", {
 
 var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) { return typeof obj; } : function (obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; };
 
-exports.default = reconcileChildren;
+exports.reconcileChildren = reconcileChildren;
+exports.cloneChildFibers = cloneChildFibers;
 
-var _Fiber = __webpack_require__(2);
+var _Fiber = __webpack_require__(3);
 
 var _TypeOfEffect = __webpack_require__(1);
 
-var _Symbols = __webpack_require__(5);
+var _Symbols = __webpack_require__(7);
 
 var _TypeOfWork = __webpack_require__(0);
 
-// 标记pendingProps
+// 新建/更新子fiber，标记pendingProps
 function reconcileChildren(current, workInProgress, nextChildren) {
   var expirationTime = workInProgress.expirationTime,
       currentFirstChild = null;
@@ -1285,11 +1428,16 @@ function reconcileChildFibers(returnFiber, currentFirstChild, newChildren, expir
 function reconcileSingleElement(returnFiber, currentFirstChild, element, expirationTime) {
   var child = currentFirstChild,
       key = element.key;
+  // 依次遍历current的child
+  // key不同 -> 直接删除当前
+  // key相同 -> type相同 -> 删除之后的fiber，并复制当前fiber得到workinprogress的child，退出
+  //        -> type不同 —> 删除剩下所有fiber，根据element新建fiber
   while (child !== null) {
     if (key === child.key) {
       if (child.type === element.type) {
         deleteRemainingChildren(returnFiber, child.sibling);
         var existing = useFiber(child, element.props, expirationTime);
+        // TODO: ref
         existing.return = returnFiber;
         return existing;
       } else {
@@ -1316,10 +1464,11 @@ function reconcileChildrenArray(returnFiber, currentFirstChild, newChildren, exp
   // 依次同时遍历old和new，key匹配时（包括两个null）才继续
   for (; oldFiber !== null && newIndex < newChildren.length; newIndex++) {
     var newFiber = updateSlot(returnFiber, oldFiber, newChildren[newIndex], expirationTime);
-    // key不匹配时返回null
+    // key不匹配时返回null，停止
     if (newFiber === null) {
       break;
     }
+    // 新旧fiber的key相同但type不同，删除旧fiber
     if (oldFiber && newFiber.alternate === null) {
       deleteChild(returnFiber, oldFiber);
     }
@@ -1489,6 +1638,7 @@ function placeChild(newFiber, lastPlacedIndex, newIndex) {
       return oldIndex;
     }
   } else {
+    // 
     newFiber.effectTag = _TypeOfEffect.Placement;
     return lastPlacedIndex;
   }
@@ -1508,7 +1658,7 @@ function useFiber(fiber, pendingProps, expirationTime) {
   return clone;
 }
 
-// 要删除的加到return的effect list里
+// 要删除的标记Deletion，并加到return的effect list里
 function deleteChild(returnFiber, childToDelete) {
   var last = returnFiber.lastEffect;
   if (last === null) {
@@ -1530,8 +1680,130 @@ function deleteRemainingChildren(returnFiber, currentFirstChild) {
   return null;
 }
 
+function cloneChildFibers(current, workInProgress) {
+  var currentChild = workInProgress.child;
+  if (currentChild === null) return;
+  var newChild = (0, _Fiber.createWorkInProgress)(currentChild, currentChild.pendingProps, currentChild.expirationTime);
+  newChild.return = workInProgress;
+  workInProgress.child = newChild;
+
+  while (currentChild.sibling !== null) {
+    currentChild = currentChild.sibling;
+    newChild = newChild.sibling = (0, _Fiber.createWorkInProgress)(currentChild, currentChild.pendingProps, currentChild.expirationTime);
+    newChild.return = workInProgress;
+  }
+  newChild.sibling = null;
+}
+
 /***/ }),
-/* 14 */
+/* 15 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.constructClassInstance = constructClassInstance;
+exports.mountClassInstance = mountClassInstance;
+exports.updateClassInstance = updateClassInstance;
+
+var _UpdateQueue = __webpack_require__(4);
+
+var _TypeOfEffect = __webpack_require__(1);
+
+function constructClassInstance(workInProgress, props) {
+  var ctor = workInProgress.type;
+  // TODO: get context
+  // fiber.tag === ClassComponent && fiber.type.contextTypes != null
+  var instance = new ctor(props);
+  workInProgress.stateNode = instance;
+  instance._internalFiber = workInProgress;
+  // 插入updater
+  return instance;
+}
+
+function mountClassInstance(workInProgress, renderExpirationTime) {
+  var current = workInProgress.alternate,
+      instance = workInProgress.stateNode,
+      state = instance.state || null,
+      props = workInProgress.pendingProps;
+  instance.state = workInProgress.memoizedState = state; // 防止undefined
+  instance.props = props;
+
+  // internalContextTag: AsyncUpdates
+
+  if (typeof instance.componentWillMount === "function") {
+    instance.componentWillMount(); // 可能setState
+    // enqueueReplaceState
+    var queue = workInProgress.updateQueue;
+    if (queue !== null) {
+      instance.state = (0, _UpdateQueue.processUpdateQueue)(current, workInProgress, updateQueue, renderExpirationTime);
+    }
+  }
+  if (typeof instance.componentDidMount === "function") {
+    workInProgress.effectTag |= _TypeOfEffect.Update;
+  }
+}
+
+// life-cycles
+function updateClassInstance(current, workInProgress, renderExpirationTime) {
+  var instance = workInProgress.stateNode,
+      oldProps = workInProgress.memorizedProps,
+      newProps = workInProgress.pendingProps;
+  if (newProps === null) {
+    newProps = oldProps;
+  }
+
+  // componentWillReceiveProps
+  if (typeof instance.componentWillReceiveProps === "function" && newProps !== oldProps) {
+    instance.componentWillReceiveProps(newProps);
+  }
+
+  var oldState = workInProgress.memorizedState,
+      newState = oldState;
+  if (workInProgress.updateQueue !== null) {
+    newState = (0, _UpdateQueue.processUpdateQueue)(current, workInProgress, workInProgress.updateQueue, renderExpirationTime);
+  }
+  // shouldComponentUpdate
+  var shouldUpdate = checkShouldComponentUpdate(workInProgress, oldProps, newProps, oldState, newState);
+  if (shouldUpdate) {
+    // componentWillUpdate
+    if (typeof instance.componentWillUpdate === "function") {
+      instance.componentWillUpdate(newProps, newState);
+    }
+    if (typeof instance.componentDidUpdate === "function") {
+      workInProgress.effectTag |= _TypeOfEffect.Update;
+    }
+  } else {
+    if (typeof instance.componentDidUpdate === 'function') {
+      if (oldProps !== current.memoizedProps || oldState !== current.memoizedState) {
+        workInProgress.effectTag |= _TypeOfEffect.Update;
+      }
+    }
+    workInProgress.memoizedProps = newProps;
+    workInProgress.memoizedState = newState;
+  }
+
+  instance.props = newProps;
+  instance.state = newState;
+  return shouldUpdate;
+}
+
+function checkShouldComponentUpdate(workInProgress, oldProps, newProps, oldState, newState) {
+  var instance = workInProgress.stateNode;
+  var shouldUpdate = void 0;
+  if (typeof instance.shouldComponentUpdate === "function") {
+    shouldUpdate = instance.shouldComponentUpdate(newProps, newState);
+    return shouldUpdate;
+  }
+  // pureComponent, shallowEqual
+  return true;
+}
+
+/***/ }),
+/* 16 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -1546,13 +1818,13 @@ var _TypeOfWork = __webpack_require__(0);
 
 var _TypeOfEffect = __webpack_require__(1);
 
-var _ExpirationTime = __webpack_require__(3);
+var _ExpirationTime = __webpack_require__(2);
 
-var _Property = __webpack_require__(6);
+var _Property = __webpack_require__(8);
 
-var _EventEmitter = __webpack_require__(15);
+var _EventEmitter = __webpack_require__(17);
 
-var _EventPluginRegistry = __webpack_require__(8);
+var _EventPluginRegistry = __webpack_require__(5);
 
 // 当还有sibling时，不返回null，对sibling performUnitOfWork
 function completeUnitOfWork(workInProgress) {
@@ -1605,6 +1877,7 @@ function completeUnitOfWork(workInProgress) {
 function resetExpirationTime(workInProgress) {
   var newExpirationTime = getUpdateExpirationTime(workInProgress);
   var child = workInProgress.child;
+  // 如果子fiber有更高的优先级，父fiber也要跟着提高
   while (child !== null) {
     if (child.expirationTime !== _ExpirationTime.NoWork && (newExpirationTime === _ExpirationTime.NoWork || newExpirationTime > child.expirationTime)) {
       newExpirationTime = child.expirationTime;
@@ -1735,14 +2008,14 @@ function setInitialDOMProperties(tag, domElement, props) {
       if (typeof prop === "string" || typeof prop === "number") {
         domElement.innerHTML = "" + prop; // textContent
       }
-    } else if (_EventPluginRegistry.registrationNameModule.hasOwnProperty(propKey)) {
+    } else if (_EventPluginRegistry.registrationNameModules.hasOwnProperty(propKey)) {
       (0, _EventEmitter.listenTo)(propKey);
     }
   }
 }
 
 /***/ }),
-/* 15 */
+/* 17 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -1753,29 +2026,23 @@ Object.defineProperty(exports, "__esModule", {
 });
 exports.listenTo = listenTo;
 
-var _EventListener = __webpack_require__(16);
+var _EventListener = __webpack_require__(18);
+
+var _EventPluginRegistry = __webpack_require__(5);
 
 var alreadyListeningTo = {};
 var topListenerID = "_listenersID";
 var topListenerCounter = 0;
 
-var registrationNameDependencies = {
-  onClick: ["topClick"]
-};
-
-var topLevelTypes = {
-  topClick: "click"
-};
-
 function listenTo(registName) {
   var isListening = getListeningForDocument(),
       // {}
-  dependencies = registrationNameDependencies[registName];
+  dependencies = _EventPluginRegistry.registrationNameDependencies[registName];
 
   for (var i = 0, len = dependencies.length; i < len; i++) {
     var dependency = dependencies[i];
     if (!(isListening.hasOwnProperty(dependency) && isListening[dependency])) {
-      (0, _EventListener.trapBubbledEvent)(dependency, topLevelTypes[dependency], document);
+      (0, _EventListener.trapBubbledEvent)(dependency, _EventPluginRegistry.topLevelTypes[dependency], document);
       isListening[dependency] = true;
     }
   }
@@ -1793,7 +2060,7 @@ function getListeningForDocument() {
 }
 
 /***/ }),
-/* 16 */
+/* 18 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -1804,9 +2071,9 @@ Object.defineProperty(exports, "__esModule", {
 });
 exports.trapBubbledEvent = trapBubbledEvent;
 
-var _CallbackBookKeeping = __webpack_require__(17);
+var _CallbackBookKeeping = __webpack_require__(19);
 
-var _EventPluginHub = __webpack_require__(18);
+var _EventPluginHub = __webpack_require__(20);
 
 var EventListener = {
   listen: function listen(target, eventType, callback) {
@@ -1888,7 +2155,7 @@ function handleTopLevel(bookkeeping) {
 }
 
 /***/ }),
-/* 17 */
+/* 19 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -1931,7 +2198,7 @@ function releaseCallbackBookkeeping(instance) {
 }
 
 /***/ }),
-/* 18 */
+/* 20 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -1942,11 +2209,11 @@ Object.defineProperty(exports, "__esModule", {
 });
 exports.runExtractedEventsInBatch = runExtractedEventsInBatch;
 
-var _Accumulate = __webpack_require__(7);
+var _Accumulate = __webpack_require__(9);
 
-var _EventPluginUtils = __webpack_require__(19);
+var _EventPluginUtils = __webpack_require__(21);
 
-var _EventPluginRegistry = __webpack_require__(8);
+var _EventPluginRegistry = __webpack_require__(5);
 
 var eventQueue = null;
 
@@ -1980,7 +2247,7 @@ function runEventsInBatch(events) {
 }
 
 /***/ }),
-/* 19 */
+/* 21 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -2018,7 +2285,7 @@ function executeDispatchesInOrder(event) {
 
 // 切换currentTarget，执行回调
 // 这里listener是直接调用，如果之前没有bind或arrow function，this为undefined
-// simulated: boolean ?? 作用还不明
+// simulated: boolean ?? 好像是React测试中用到
 function executeDispatch(event, listener, instance) {
   event.currentTarget = instance.stateNode;
   // invokeGuardedCallback还需要传type，这里简化
@@ -2027,7 +2294,7 @@ function executeDispatch(event, listener, instance) {
 }
 
 /***/ }),
-/* 20 */
+/* 22 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -2039,17 +2306,34 @@ Object.defineProperty(exports, "__esModule", {
 
 var _TypeOfWork = __webpack_require__(0);
 
-var _SyntheticMouseEvent = __webpack_require__(21);
+var _SyntheticMouseEvent = __webpack_require__(23);
 
 var _SyntheticMouseEvent2 = _interopRequireDefault(_SyntheticMouseEvent);
 
-var _Accumulate = __webpack_require__(7);
+var _Accumulate = __webpack_require__(9);
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 var topLevelTypeToDispatchConfig = {};
+// {
+//   "topClick": {
+//     dependencies: ["top"],
+//     phasedRegistrationNames: {
+//       captured: "onClickCaptured",
+//       bubbled: "onClick"
+//     }
+//   }
+// }
 var eventTypes = {};
-
+// {
+//   "click": {
+//     dependencies: ["top"],
+//     phasedRegistrationNames: {
+//       captured: "onClickCaptured",
+//       bubbled: "onClick"
+//     }
+//   }
+// }
 ["click", "mouseenter"].forEach(function (event) {
   var capitalized = event[0].toUpperCase() + event.slice(1);
   var onEvent = "on" + capitalized;
@@ -2128,7 +2412,7 @@ function getListener(inst, registrationName) {
 exports.default = SimpleEventPlugin;
 
 /***/ }),
-/* 21 */
+/* 23 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -2138,7 +2422,7 @@ Object.defineProperty(exports, "__esModule", {
   value: true
 });
 
-var _SyntheticUIEvent = __webpack_require__(22);
+var _SyntheticUIEvent = __webpack_require__(24);
 
 var _SyntheticUIEvent2 = _interopRequireDefault(_SyntheticUIEvent);
 
@@ -2165,7 +2449,7 @@ var SyntheticMouseEvent = _SyntheticUIEvent2.default.extend({
 exports.default = SyntheticMouseEvent;
 
 /***/ }),
-/* 22 */
+/* 24 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -2175,7 +2459,7 @@ Object.defineProperty(exports, "__esModule", {
   value: true
 });
 
-var _SyntheticEvent = __webpack_require__(23);
+var _SyntheticEvent = __webpack_require__(25);
 
 var _SyntheticEvent2 = _interopRequireDefault(_SyntheticEvent);
 
@@ -2189,7 +2473,7 @@ var SyntheticUIEvent = _SyntheticEvent2.default.extend({
 exports.default = _SyntheticEvent2.default;
 
 /***/ }),
-/* 23 */
+/* 25 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -2204,7 +2488,9 @@ var EventInterface = {
   type: null,
   target: null, // IE srcElement
   // currentTarget在dispatch的时候设置
-  currentTarget: null,
+  currentTarget: function currentTarget() {
+    return null;
+  },
   eventPhase: null,
   bubbles: null,
   cancelable: null,
@@ -2229,8 +2515,6 @@ function SyntheticEvent(dispatchConfig, targetInst, nativeEvent, nativeEventTarg
       this[propName] = propValue(nativeEvent);
     } else if (propName === "target") {
       this.target = nativeEventTarget;
-    } else if (propName === "currentTarget") {
-      this.currentTarget = null;
     } else {
       this[propName] = nativeEvent[propName];
     }
@@ -2331,7 +2615,7 @@ addEventPoolingTo(SyntheticEvent);
 exports.default = SyntheticEvent;
 
 /***/ }),
-/* 24 */
+/* 26 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -2340,6 +2624,7 @@ exports.default = SyntheticEvent;
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
+exports.commitContentReset = commitContentReset;
 exports.commitPlacement = commitPlacement;
 exports.commitWork = commitWork;
 exports.commitDeletion = commitDeletion;
@@ -2349,7 +2634,12 @@ var _TypeOfEffect = __webpack_require__(1);
 
 var _TypeOfWork = __webpack_require__(0);
 
-var _Property = __webpack_require__(6);
+var _Property = __webpack_require__(8);
+
+function commitContentReset(fiber) {
+  var node = fiber.stateNode;
+  node.textContent = "";
+}
 
 function getHostParentFiber(fiber) {
   var parent = fiber.return;
@@ -2394,6 +2684,14 @@ function commitPlacement(fiber) {
   var parentFiber = getHostParentFiber(fiber),
       parent = void 0;
   if (parentFiber.tag === _TypeOfWork.HostComponent) parent = parentFiber.stateNode;else if (parentFiber.tag === _TypeOfWork.HostRoot) parent = parentFiber.stateNode.containerInfo;
+
+  // 子fiber的placement effect要早于父fiber的contentReset出现
+  // 故要处理父fiber
+  if (parentFiber.effectTag & _TypeOfEffect.ContentReset) {
+    parent.textContent = "";
+    // Clear ContentReset from the effect tag
+    parentFiber.effectTag &= ~_TypeOfEffect.ContentReset;
+  }
   var before = getHostSibling(fiber),
       node = fiber;
   while (true) {
@@ -2534,7 +2832,7 @@ function commitLifeCycles(current, fiber) {
 }
 
 /***/ }),
-/* 25 */
+/* 27 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -2546,11 +2844,11 @@ Object.defineProperty(exports, "__esModule", {
 
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
-var _Component = __webpack_require__(26);
+var _Component = __webpack_require__(28);
 
 var _Component2 = _interopRequireDefault(_Component);
 
-var _Element = __webpack_require__(4);
+var _Element = __webpack_require__(6);
 
 var _Element2 = _interopRequireDefault(_Element);
 
@@ -2601,7 +2899,7 @@ var App = function () {
 exports.default = App;
 
 /***/ }),
-/* 26 */
+/* 28 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
